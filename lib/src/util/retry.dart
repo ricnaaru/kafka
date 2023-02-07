@@ -1,16 +1,21 @@
 import 'dart:async';
 
-Future<T> retryAsync<T>(Future<T> func(), int retries, Duration delay,
-    {bool test(error)}) {
+typedef TestFunction = bool Function(dynamic error);
+
+Future<T> retryAsync<T>(
+  Future<T> func(),
+  int retries,
+  Duration delay, {
+  TestFunction? test,
+}) {
   return func().catchError((error) {
     if (retries == 0) {
-      return new Future.error(error);
+      return Future.value(error);
     } else {
-      if (test is Function && !test(error)) {
-        return new Future.error(error);
+      if (test != null && !test(error)) {
+        return Future.value(error);
       }
-      return new Future.delayed(
-          delay, () => retryAsync(func, retries - 1, delay));
+      return new Future.delayed(delay, () => retryAsync(func, retries - 1, delay));
     }
   });
 }

@@ -16,8 +16,7 @@ final Logger _logger = new Logger('Producer');
 /// Automatically discovers leader brokers for each topic-partition to
 /// send messages to.
 abstract class Producer<K, V> implements StreamSink<ProducerRecord<K, V>> {
-  factory Producer(Serializer<K> keySerializer, Serializer<V> valueSerializer,
-          ProducerConfig config) =>
+  factory Producer(Serializer<K> keySerializer, Serializer<V> valueSerializer, ProducerConfig config) =>
       new _Producer(keySerializer, valueSerializer, config);
 }
 
@@ -26,12 +25,11 @@ class ProducerRecord<K, V> {
   final int partition;
   final K key;
   final V value;
-  final int timestamp;
+  final int? timestamp;
 
   final Completer<ProduceResult> _completer = new Completer();
 
-  ProducerRecord(this.topic, this.partition, this.key, this.value,
-      {this.timestamp});
+  ProducerRecord(this.topic, this.partition, this.key, this.value, {this.timestamp});
 
   TopicPartition get topicPartition => new TopicPartition(topic, partition);
 
@@ -58,8 +56,7 @@ class ProduceResult {
   ProduceResult(this.topicPartition, this.offset, this.timestamp);
 
   @override
-  toString() =>
-      'ProduceResult{${topicPartition}, offset: $offset, timestamp: $timestamp}';
+  toString() => 'ProduceResult{${topicPartition}, offset: $offset, timestamp: $timestamp}';
 }
 
 class _Producer<K, V> implements Producer<K, V> {
@@ -68,19 +65,21 @@ class _Producer<K, V> implements Producer<K, V> {
   final Serializer<V> valueSerializer;
   final Session session;
 
-  final StreamController<ProducerRecord<K, V>> _controller =
-      new StreamController();
+  final StreamController<ProducerRecord<K, V>> _controller = new StreamController();
 
   _Producer(this.keySerializer, this.valueSerializer, this.config)
-      : session = new Session(config.bootstrapServers) {
+      : session = new Session(
+          config.bootstrapServers ?? <String>[],
+        ) {
     _logger.info('Producer created with config:');
     _logger.info(config);
   }
 
-  Future _closeFuture;
+  Future? _closeFuture;
+
   @override
   Future close() {
-    if (_closeFuture != null) return _closeFuture;
+    if (_closeFuture != null) return _closeFuture!;
 
     /// We first close our internal stream controller so that no new records
     /// can be added. Then check if producing is still in progress and wait
@@ -89,7 +88,7 @@ class _Producer<K, V> implements Producer<K, V> {
     _closeFuture = _controller.close().then((_) {
       return _produceFuture;
     }).then((_) => session.close());
-    return _closeFuture;
+    return _closeFuture!;
   }
 
   @override
@@ -99,7 +98,7 @@ class _Producer<K, V> implements Producer<K, V> {
   }
 
   @override
-  void addError(errorEvent, [StackTrace stackTrace]) {
+  void addError(errorEvent, [StackTrace? stackTrace]) {
     /// TODO: Should this throw instead to not allow errors?
     /// Shouldn't really need to implement this method since stream
     /// listener is internal to this class (?)
@@ -116,14 +115,16 @@ class _Producer<K, V> implements Producer<K, V> {
   @override
   Future get done => close();
 
-  StreamSubscription _subscription;
+  StreamSubscription? _subscription;
+
   void _subscribe() {
     if (_subscription == null) {
       _subscription = _controller.stream.listen(_onData, onDone: _onDone);
     }
   }
 
-  List<ProducerRecord<K, V>> _buffer = new List();
+  List<ProducerRecord<K, V>> _buffer = [];
+
   void _onData(ProducerRecord<K, V> event) {
     _buffer.add(event);
     _resume();
@@ -133,7 +134,8 @@ class _Producer<K, V> implements Producer<K, V> {
     _logger.fine('Done event received');
   }
 
-  Future _produceFuture;
+  Future? _produceFuture;
+
   void _resume() {
     if (_produceFuture != null) return;
     _logger.fine('New records arrived. Resuming producer.');
@@ -146,14 +148,14 @@ class _Producer<K, V> implements Producer<K, V> {
   Future _produce() async {
     while (_buffer.isNotEmpty) {
       var records = _buffer;
-      _buffer = new List();
+      _buffer = [];
       var leaders = await _groupByLeader(records);
       var pools = new Map<Broker, Pool>();
       for (var leader in leaders.keys) {
         pools[leader] = new Pool(config.maxInFlightRequestsPerConnection);
-        var requests = _buildRequests(leaders[leader]);
+        var requests = _buildRequests(leaders[leader]!);
         for (var req in requests) {
-          pools[leader].withResource(() => _send(leader, req, leaders[leader]));
+          pools[leader]!.withResource(() => _send(leader, req, leaders[leader]!));
         }
       }
       var futures = pools.values.map((_) => _.close());
@@ -161,15 +163,14 @@ class _Producer<K, V> implements Producer<K, V> {
     }
   }
 
-  Future _send(Broker broker, ProduceRequest request,
-      List<ProducerRecord<K, V>> records) {
+  Future _send(Broker broker, ProduceRequest request, List<ProducerRecord<K, V>> records) {
     return session.send(request, broker.host, broker.port).then((response) {
-      Map<TopicPartition, int> offsets = new Map.from(response.results.offsets);
+      Map<TopicPartition, int> offsets = new Map.from(response.results.offsets ?? <TopicPartition, int>{});
       for (var rec in records) {
         var p = rec.topicPartition;
-        rec._complete(
-            new ProduceResult(p, offsets[p], response.results[p].timestamp));
-        offsets[p]++;
+        offsets[p] ??= 0;
+        rec._complete(new ProduceResult(p, offsets[p]!, response.results[p]?.timestamp ?? 0));
+        offsets[p] = offsets[p]! + 1;
       }
     }).catchError((error) {
       records.forEach((_) {
@@ -184,27 +185,29 @@ class _Producer<K, V> implements Producer<K, V> {
     for (var rec in records) {
       var key = keySerializer.serialize(rec.key);
       var value = valueSerializer.serialize(rec.value);
-      var timestamp =
-          rec.timestamp ?? new DateTime.now().millisecondsSinceEpoch;
+      var timestamp = rec.timestamp ?? new DateTime.now().millisecondsSinceEpoch;
       var message = new Message(value, key: key, timestamp: timestamp);
       messages.putIfAbsent(rec.topic, () => new Map());
-      messages[rec.topic].putIfAbsent(rec.partition, () => new List());
-      messages[rec.topic][rec.partition].add(message);
+      messages[rec.topic]!.putIfAbsent(rec.partition, () => []);
+      messages[rec.topic]![rec.partition]!.add(message);
     }
     var request = new ProduceRequest(config.acks, config.timeoutMs, messages);
     return [request];
   }
 
-  Future<Map<Broker, List<ProducerRecord<K, V>>>> _groupByLeader(
-      List<ProducerRecord<K, V>> records) async {
+  Future<Map<Broker, List<ProducerRecord<K, V>>>> _groupByLeader(List<ProducerRecord<K, V>> records) async {
     var topics = records.map((_) => _.topic).toSet().toList(growable: false);
     var metadata = await session.metadata.fetchTopics(topics);
     var result = new Map<Broker, List<ProducerRecord<K, V>>>();
     for (var rec in records) {
-      var leader = metadata[rec.topic].partitions[rec.partition].leader;
-      var broker = metadata.brokers[leader];
-      result.putIfAbsent(broker, () => new List());
-      result[broker].add(rec);
+      var leader = metadata[rec.topic]?.partitions[rec.partition]?.leader;
+      if (leader != null) {
+        var broker = metadata.brokers[leader];
+        if (broker != null) {
+          result.putIfAbsent(broker, () => []);
+          result[broker]!.add(rec);
+        }
+      }
     }
     return result;
   }
@@ -227,7 +230,7 @@ class ProducerConfig {
   /// dynamically), this list need not contain the full set of
   /// servers (you may want more than one, though, in case a
   /// server is down).
-  final List<String> bootstrapServers;
+  final List<String>? bootstrapServers;
 
   /// The number of acknowledgments the producer requires the leader to have
   /// received before considering a request complete.

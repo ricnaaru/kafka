@@ -21,23 +21,22 @@ abstract class Metadata {
   ///
   /// List of [bootstrapServers] is used to establish connection with
   /// Kafka cluster. Each value in this list must be of format `host:port`.
-  factory Metadata(List<String> bootstrapServers, Session session) {
+  factory Metadata(List<String>? bootstrapServers, Session session) {
     assert(bootstrapServers != null && bootstrapServers.isNotEmpty);
 
-    List<Uri> bootstrapUris = bootstrapServers
-        .map((_) => Uri.parse('kafka://$_'))
-        .toList(growable: false);
+    List<Uri> bootstrapUris = bootstrapServers!.map((_) => Uri.parse('kafka://$_')).toList(growable: false);
     var isValid = bootstrapUris.every((_) => _.host != null && _.port != null);
-    if (!isValid)
-      throw new ArgumentError(
-          'Invalid bootstrap servers list provided: $bootstrapServers');
+    if (!isValid) throw new ArgumentError('Invalid bootstrap servers list provided: $bootstrapServers');
 
     return new _Metadata(session, bootstrapUris);
   }
 
   Future<Topics> fetchTopics(List<String> topics);
+
   Future<List<String>> listTopics();
+
   Future<List<Broker>> listBrokers();
+
   Future<Broker> fetchGroupCoordinator(String groupName);
 }
 
@@ -52,29 +51,23 @@ class _Metadata implements Metadata {
     Future<Topics> fetch() {
       var req = new MetadataRequest(topics);
       var broker = bootstrapUris.first;
-      return session
-          .send(req, broker.host, broker.port)
-          .then((response) => response.topics);
+      return session.send(req, broker.host, broker.port).then((response) => response.topics);
     }
 
-    return retryAsync(fetch, 5, new Duration(milliseconds: 500),
-        test: (err) => err is LeaderNotAvailableError);
+    return retryAsync(fetch, 5, new Duration(milliseconds: 500), test: (err) => err is LeaderNotAvailableError);
   }
 
-  Future<List<String>> listTopics() {
+  Future<List<String>> listTopics() async {
     var req = new MetadataRequest();
     var broker = bootstrapUris.first;
-    return session.send(req, broker.host, broker.port).then((response) {
-      return response.topics.names;
-    });
+    final response = await session.send(req, broker.host, broker.port);
+    return response.topics.names ?? <String>[];
   }
 
   Future<List<Broker>> listBrokers() {
     var req = new MetadataRequest();
     var broker = bootstrapUris.first;
-    return session
-        .send(req, broker.host, broker.port)
-        .then((response) => response.brokers);
+    return session.send(req, broker.host, broker.port).then((response) => response.brokers);
   }
 
   Future<Broker> fetchGroupCoordinator(String groupName) {
@@ -82,9 +75,9 @@ class _Metadata implements Metadata {
       _logger.info('Fetching group coordinator for group $groupName.');
       var req = new GroupCoordinatorRequest(groupName);
       var broker = bootstrapUris.first;
-      return session.send(req, broker.host, broker.port).then((res) =>
-          new Broker(
-              res.coordinatorId, res.coordinatorHost, res.coordinatorPort));
+      return session
+          .send(req, broker.host, broker.port)
+          .then((res) => new Broker(res.coordinatorId, res.coordinatorHost, res.coordinatorPort));
     }
 
     return retryAsync(fetch, 5, new Duration(milliseconds: 1000),

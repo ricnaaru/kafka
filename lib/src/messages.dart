@@ -28,9 +28,7 @@ class MessageAttributes {
   final TimestampType timestampType;
 
   /// Creates new instance of MessageAttributes.
-  MessageAttributes(
-      {this.compression = Compression.none,
-      this.timestampType = TimestampType.createTime});
+  MessageAttributes({this.compression = Compression.none, this.timestampType = TimestampType.createTime});
 
   /// Creates MessageAttributes from the raw byte.
   MessageAttributes.fromByte(int byte)
@@ -51,7 +49,7 @@ class Message {
 
   /// Optional message key that was used for partition assignment.
   /// The key can be `null`.
-  final List<int> key;
+  final List<int>? key;
 
   /// The timestamp of this message, in msecs.
   final int timestamp;
@@ -60,8 +58,7 @@ class Message {
   Message._(this.attributes, this.key, this.value, this.timestamp);
 
   /// Creates new [Message].
-  factory Message(List<int> value,
-      {MessageAttributes attributes, List<int> key, int timestamp}) {
+  factory Message(List<int> value, {MessageAttributes? attributes, List<int>? key, int? timestamp}) {
     attributes ??= new MessageAttributes();
     timestamp ??= new DateTime.now().millisecondsSinceEpoch;
     return new Message._(attributes, key, value, timestamp);

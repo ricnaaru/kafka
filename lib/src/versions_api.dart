@@ -55,9 +55,9 @@ class _ApiVersionsResponseDecoder
   @override
   ApiVersionsResponse decode(List<int> data) {
     var reader = new KafkaBytesReader.fromBytes(data);
-    var error = reader.readInt16();
+    var error = reader.readInt16() ?? 0;
     var versions = reader.readObjectArray<ApiVersion>(
-        (_) => new ApiVersion(_.readInt16(), _.readInt16(), _.readInt16()));
+        (_) => new ApiVersion(_.readInt16() ?? 0, _.readInt16() ?? 0, _.readInt16() ?? 0));
     return new ApiVersionsResponse(error, versions);
   }
 }

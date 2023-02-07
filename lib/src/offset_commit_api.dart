@@ -1,8 +1,10 @@
+import 'package:collection/collection.dart';
+
 import 'common.dart';
 import 'consumer_offset_api.dart';
 import 'errors.dart';
 import 'io.dart';
-import 'util/group_by.dart';
+import 'util/group_by.dart' as kafka;
 
 /// Kafka OffsetCommitRequest.
 class OffsetCommitRequest extends KRequest<OffsetCommitResponse> {
@@ -41,8 +43,7 @@ class OffsetCommitResponse {
   final List<OffsetCommitResult> results;
 
   OffsetCommitResponse(this.results) {
-    var errorResult = results.firstWhere((_) => _.error != Errors.NoError,
-        orElse: () => null);
+    var errorResult = results.firstWhereOrNull((_) => _.error != Errors.NoError);
     if (errorResult != null)
       throw new KafkaError.fromCode(errorResult.error, this);
   }
@@ -68,7 +69,7 @@ class _OffsetCommitRequestEncoder
 
     var builder = new KafkaBytesBuilder();
     Map<String, List<ConsumerOffset>> groupedByTopic =
-        groupBy(request.offsets, (o) => o.topic);
+        kafka.groupBy(request.offsets, (o) => o.topic);
 
     builder.addString(request.group);
     builder.addInt32(request.generationId);
@@ -81,7 +82,7 @@ class _OffsetCommitRequestEncoder
       partitionOffsets.forEach((p) {
         builder.addInt32(p.partition);
         builder.addInt64(p.offset);
-        builder.addString(p.metadata);
+        builder.addString(p.metadata ?? "");
       });
     });
 
@@ -97,14 +98,14 @@ class _OffsetCommitResponseDecoder
   OffsetCommitResponse decode(List<int> data) {
     var reader = new KafkaBytesReader.fromBytes(data);
     List<OffsetCommitResult> results = [];
-    var count = reader.readInt32();
+    var count = reader.readInt32() ?? 0;
 
     while (count > 0) {
-      var topic = reader.readString();
-      var partitionCount = reader.readInt32();
+      var topic = reader.readString() ?? "";
+      var partitionCount = reader.readInt32() ?? 0;
       while (partitionCount > 0) {
-        var partition = reader.readInt32();
-        var error = reader.readInt16();
+        var partition = reader.readInt32() ?? 0;
+        var error = reader.readInt16() ?? 0;
         results.add(new OffsetCommitResult(topic, partition, error));
         partitionCount--;
       }

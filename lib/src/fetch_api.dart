@@ -46,13 +46,14 @@ class FetchRequest implements KRequest<FetchResponse> {
   @override
   RequestEncoder<KRequest> get encoder => const _FetchRequestEncoder();
 
-  Map<String, Map<int, FetchData>> _fetchDataByTopic;
-  Map<String, Map<int, FetchData>> get fetchDataByTopic {
+  Map<String, Map<int, FetchData>>? _fetchDataByTopic;
+
+  Map<String, Map<int, FetchData>>? get fetchDataByTopic {
     if (_fetchDataByTopic == null) {
       var result = new Map<String, Map<int, FetchData>>();
       fetchData.keys.forEach((_) {
         result.putIfAbsent(_.topic, () => new Map());
-        result[_.topic][_.partition] = fetchData[_];
+        result[_.topic]![_.partition] = fetchData[_]!;
       });
       _fetchDataByTopic = result;
     }
@@ -63,6 +64,7 @@ class FetchRequest implements KRequest<FetchResponse> {
 class FetchData {
   final int fetchOffset;
   final int maxBytes;
+
   FetchData(this.fetchOffset, this.maxBytes);
 }
 
@@ -71,16 +73,15 @@ class _FetchRequestEncoder implements RequestEncoder<FetchRequest> {
 
   @override
   List<int> encode(FetchRequest request, int version) {
-    assert(
-        version == 2, 'Only v2 of Fetch request is supported by the client.');
+    assert(version == 2, 'Only v2 of Fetch request is supported by the client.');
     var builder = new KafkaBytesBuilder();
 
     builder.addInt32(FetchRequest.replicaId);
     builder.addInt32(request.maxWaitTime);
     builder.addInt32(request.minBytes);
 
-    builder.addInt32(request.fetchDataByTopic.length);
-    request.fetchDataByTopic.forEach((topic, partitions) {
+    builder.addInt32(request.fetchDataByTopic?.length ?? 0);
+    request.fetchDataByTopic?.forEach((topic, partitions) {
       builder.addString(topic);
       builder.addInt32(partitions.length);
       partitions.forEach((partition, data) {
@@ -119,8 +120,7 @@ class FetchResult {
   final int highwaterMarkOffset;
   final Map<int, Message> messages;
 
-  FetchResult(this.topic, this.partition, this.error, this.highwaterMarkOffset,
-      this.messages);
+  FetchResult(this.topic, this.partition, this.error, this.highwaterMarkOffset, this.messages);
 }
 
 class _FetchResponseDecoder implements ResponseDecoder<FetchResponse> {
@@ -129,23 +129,22 @@ class _FetchResponseDecoder implements ResponseDecoder<FetchResponse> {
   @override
   FetchResponse decode(List<int> data) {
     var reader = new KafkaBytesReader.fromBytes(data);
-    var throttleTime = reader.readInt32();
-    var count = reader.readInt32();
-    var results = new List<FetchResult>();
+    var throttleTime = reader.readInt32() ?? 0;
+    var count = reader.readInt32() ?? 0;
+    var results = <FetchResult>[];
     while (count > 0) {
-      var topic = reader.readString();
-      var partitionCount = reader.readInt32();
+      var topic = reader.readString() ?? "";
+      var partitionCount = reader.readInt32() ?? 0;
       while (partitionCount > 0) {
-        var partition = reader.readInt32();
-        var error = reader.readInt16();
-        var highwaterMarkOffset = reader.readInt64();
-        var messageSetSize = reader.readInt32();
-        var data = reader.readRaw(messageSetSize);
+        var partition = reader.readInt32() ?? 0;
+        var error = reader.readInt16() ?? 0;
+        var highwaterMarkOffset = reader.readInt64() ?? 0;
+        var messageSetSize = reader.readInt32() ?? 0;
+        var data = reader.readRaw(messageSetSize) ?? <int>[];
         var messageReader = new KafkaBytesReader.fromBytes(data);
         var messageSet = _readMessageSet(messageReader);
 
-        results.add(new FetchResult(
-            topic, partition, error, highwaterMarkOffset, messageSet));
+        results.add(new FetchResult(topic, partition, error, highwaterMarkOffset, messageSet));
         partitionCount--;
       }
       count--;
@@ -160,17 +159,15 @@ class _FetchResponseDecoder implements ResponseDecoder<FetchResponse> {
     var messages = new Map<int, Message>();
     while (reader.isNotEOF) {
       try {
-        int offset = reader.readInt64();
-        messageSize = reader.readInt32();
+        int offset = reader.readInt64() ?? 0;
+        messageSize = reader.readInt32() ?? 0;
         var crc = reader.readInt32();
 
-        var data = reader.readRaw(messageSize - 4);
+        var data = reader.readRaw(messageSize - 4) ?? <int>[];
         var actualCrc = Crc32.signed(data);
         if (actualCrc != crc) {
-          _logger.warning(
-              'Message CRC sum mismatch. Expected crc: ${crc}, actual: ${actualCrc}');
-          throw new MessageCrcMismatchError(
-              'Expected crc: ${crc}, actual: ${actualCrc}');
+          _logger.warning('Message CRC sum mismatch. Expected crc: ${crc}, actual: ${actualCrc}');
+          throw new MessageCrcMismatchError('Expected crc: ${crc}, actual: ${actualCrc}');
         }
         var messageReader = new KafkaBytesReader.fromBytes(data);
         var message = _readMessage(messageReader);
@@ -178,12 +175,10 @@ class _FetchResponseDecoder implements ResponseDecoder<FetchResponse> {
           messages[offset] = message;
         } else {
           if (message.attributes.compression == Compression.snappy)
-            throw new UnimplementedError(
-                'Snappy compression is not supported yet by the client.');
+            throw new UnimplementedError('Snappy compression is not supported yet by the client.');
 
           var codec = new GZipCodec();
-          var innerReader =
-              new KafkaBytesReader.fromBytes(codec.decode(message.value));
+          var innerReader = new KafkaBytesReader.fromBytes(codec.decode(message.value));
           var innerMessageSet = _readMessageSet(innerReader);
           messages.addAll(innerMessageSet);
         }
@@ -202,15 +197,13 @@ class _FetchResponseDecoder implements ResponseDecoder<FetchResponse> {
 
   Message _readMessage(KafkaBytesReader reader) {
     final magicByte = reader.readInt8();
-    assert(magicByte == 1,
-        'Unsupported message format $magicByte. Only version 1 is supported by the client.');
-    final attrByte = reader.readInt8();
+    assert(magicByte == 1, 'Unsupported message format $magicByte. Only version 1 is supported by the client.');
+    final attrByte = reader.readInt8() ?? 0;
     final attributes = new MessageAttributes.fromByte(attrByte);
-    final timestamp = reader.readInt64();
+    final timestamp = reader.readInt64() ?? 0;
 
-    final key = reader.readBytes();
-    final value = reader.readBytes();
-    return new Message(value,
-        attributes: attributes, key: key, timestamp: timestamp);
+    final key = reader.readBytes() ?? <int>[];
+    final value = reader.readBytes() ?? <int>[];
+    return new Message(value, attributes: attributes, key: key, timestamp: timestamp);
   }
 }

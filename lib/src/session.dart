@@ -40,12 +40,12 @@ abstract class Session {
 
 class _SessionImpl implements Session {
   final Map<String, Future<KSocket>> _sockets = new Map();
-  Metadata _metadata;
-  Metadata get metadata => _metadata;
+  Metadata? _metadata;
+  Metadata get metadata => _metadata!;
 
   /// Resolved API versions supported by both server and client.
-  Map<int, int> _apiVersions;
-  Completer _apiResolution;
+  Map<int, int>? _apiVersions;
+  Completer? _apiResolution;
 
   _SessionImpl(List<String> bootstrapServers) {
     _metadata = new Metadata(bootstrapServers, this);
@@ -66,7 +66,7 @@ class _SessionImpl implements Session {
     }
 
     return result.then((socket) {
-      var version = _apiVersions[request.apiKey];
+      var version = _apiVersions?[request.apiKey] ?? 0;
       _logger.finest('Sending $request (v$version) to $host:$port');
       var payload = request.encoder.encode(request, version);
       return socket.sendPacket(request.apiKey, version, payload);
@@ -79,7 +79,7 @@ class _SessionImpl implements Session {
   }
 
   Future _resolveApiVersions(String host, int port) {
-    if (_apiResolution != null) return _apiResolution.future;
+    if (_apiResolution != null) return _apiResolution!.future;
     _apiResolution = new Completer();
     var request = new ApiVersionsRequest();
     _getSocket(host, port).then((socket) {
@@ -89,9 +89,9 @@ class _SessionImpl implements Session {
       var response = request.decoder.decode(data);
       _apiVersions = resolveApiVersions(response.versions, supportedVersions);
     }).whenComplete(() {
-      _apiResolution.complete();
+      _apiResolution!.complete();
     });
-    return _apiResolution.future;
+    return _apiResolution!.future;
   }
 
   Future<KSocket> _getSocket(String host, int port) {
@@ -100,7 +100,7 @@ class _SessionImpl implements Session {
       _sockets[key] = KSocket.connect(host, port);
     }
 
-    return _sockets[key];
+    return _sockets[key]!;
   }
 
   Future close() async {

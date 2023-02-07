@@ -15,10 +15,10 @@ class ConsumerOffset {
   final int offset;
 
   /// User-defined metadata associated with this offset.
-  final String metadata;
+  final String? metadata;
 
   /// The error code returned by the server.
-  final int error;
+  final int? error;
 
   ConsumerOffset(this.topic, this.partition, this.offset, this.metadata,
       [this.error]);
@@ -26,9 +26,9 @@ class ConsumerOffset {
   TopicPartition get topicPartition => new TopicPartition(topic, partition);
 
   /// Copies this offset and overwrites [offset] and [metadata] if provided.
-  ConsumerOffset copy({int offset, String metadata}) {
+  ConsumerOffset copy({int? offset, String? metadata}) {
     assert(offset != null);
-    return new ConsumerOffset(topic, partition, offset, metadata);
+    return new ConsumerOffset(topic, partition, offset!, metadata);
   }
 
   @override
@@ -94,7 +94,7 @@ class OffsetFetchResponse {
   OffsetFetchResponse(this.offsets) {
     var errors = offsets.map((_) => _.error).where((_) => _ != Errors.NoError);
     if (errors.isNotEmpty) {
-      throw new KafkaError.fromCode(errors.first, this);
+      throw new KafkaError.fromCode(errors.first ?? 0, this);
     }
   }
 }
@@ -108,16 +108,16 @@ class _OffsetFetchResponseDecoder
     List<ConsumerOffset> offsets = [];
     var reader = new KafkaBytesReader.fromBytes(data);
 
-    var count = reader.readInt32();
+    var count = reader.readInt32() ?? 0;
     while (count > 0) {
-      String topic = reader.readString();
-      int partitionCount = reader.readInt32();
+      String topic = reader.readString() ?? "";
+      int partitionCount = reader.readInt32() ?? 0;
       while (partitionCount > 0) {
         ConsumerOffset offset = reader.readObject((_) {
-          var partition = _.readInt32();
-          var offset = _.readInt64();
-          var metadata = _.readString();
-          var error = _.readInt16();
+          var partition = _.readInt32() ?? 0;
+          var offset = _.readInt64() ?? 0;
+          var metadata = _.readString() ?? "";
+          var error = _.readInt16() ?? 0;
           return new ConsumerOffset(topic, partition, offset, metadata, error);
         });
 

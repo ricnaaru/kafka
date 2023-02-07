@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 import 'common.dart';
 import 'errors.dart';
 import 'io.dart';
@@ -22,8 +24,7 @@ class ProduceRequest extends KRequest<ProduceResponse> {
   ProduceRequest(this.requiredAcks, this.timeout, this.messages);
 
   @override
-  ResponseDecoder<ProduceResponse> get decoder =>
-      const _ProduceResponseDecoder();
+  ResponseDecoder<ProduceResponse> get decoder => const _ProduceResponseDecoder();
 
   @override
   RequestEncoder<KRequest> get encoder => const _ProduceRequestEncoder();
@@ -35,8 +36,9 @@ class ProduceResponse {
   final int throttleTime;
 
   ProduceResponse(this.results, this.throttleTime) {
-    var errorResult = results.partitions
-        .firstWhere((_) => _.error != Errors.NoError, orElse: () => null);
+    var errorResult = results.partitions.firstWhereOrNull(
+      (_) => _.error != Errors.NoError,
+    );
 
     if (errorResult is PartitionResult) {
       throw KafkaError.fromCode(errorResult.error, this);
@@ -52,20 +54,21 @@ class PartitionResults {
 
   PartitionResults(this.partitions);
 
-  Map<TopicPartition, PartitionResult> _asMap;
-  Map<TopicPartition, PartitionResult> get asMap {
+  Map<TopicPartition, PartitionResult>? _asMap;
+
+  Map<TopicPartition, PartitionResult>? get asMap {
     if (_asMap != null) return _asMap;
     _asMap = Map.fromIterable(partitions, key: (result) => result.partition);
     return _asMap;
   }
 
-  PartitionResult operator [](TopicPartition partition) => asMap[partition];
+  PartitionResult? operator [](TopicPartition partition) => asMap?[partition];
 
-  Map<TopicPartition, int> _offsets;
-  Map<TopicPartition, int> get offsets {
+  Map<TopicPartition, int>? _offsets;
+
+  Map<TopicPartition, int>? get offsets {
     if (_offsets != null) return _offsets;
-    _offsets = Map.fromIterable(partitions,
-        key: (result) => result.partition, value: (result) => result.offset);
+    _offsets = Map.fromIterable(partitions, key: (result) => result.partition, value: (result) => result.offset);
     return _offsets;
   }
 
@@ -100,8 +103,7 @@ class PartitionResult {
   String get topic => partition.topic;
 
   @override
-  String toString() =>
-      'PartitionResult{${partition}, error: ${error}, offset: ${offset}, timestamp: $timestamp}';
+  String toString() => 'PartitionResult{${partition}, error: ${error}, offset: ${offset}, timestamp: $timestamp}';
 }
 
 class _ProduceRequestEncoder implements RequestEncoder<ProduceRequest> {
@@ -109,8 +111,7 @@ class _ProduceRequestEncoder implements RequestEncoder<ProduceRequest> {
 
   @override
   List<int> encode(ProduceRequest request, int version) {
-    assert(
-        version == 2, 'Only v2 of Produce request is supported by the client.');
+    assert(version == 2, 'Only v2 of Produce request is supported by the client.');
 
     var builder = KafkaBytesBuilder();
     builder.addInt16(request.requiredAcks);
@@ -168,8 +169,7 @@ class _ProduceRequestEncoder implements RequestEncoder<ProduceRequest> {
       case Compression.snappy:
         return 2;
       default:
-        throw ArgumentError(
-            'Invalid compression value ${attributes.compression}.');
+        throw ArgumentError('Invalid compression value ${attributes.compression}.');
     }
   }
 }
@@ -180,23 +180,22 @@ class _ProduceResponseDecoder implements ResponseDecoder<ProduceResponse> {
   @override
   ProduceResponse decode(List<int> data) {
     var reader = KafkaBytesReader.fromBytes(data);
-    var results = List<PartitionResult>();
-    var topicCount = reader.readInt32();
+    var results = <PartitionResult>[];
+    var topicCount = reader.readInt32()??0;
     while (topicCount > 0) {
-      var topic = reader.readString();
-      var partitionCount = reader.readInt32();
+      var topic = reader.readString()??"";
+      var partitionCount = reader.readInt32()??0;
       while (partitionCount > 0) {
-        var partition = reader.readInt32();
-        var error = reader.readInt16();
-        var offset = reader.readInt64();
-        var timestamp = reader.readInt64();
-        results.add(PartitionResult(
-            TopicPartition(topic, partition), error, offset, timestamp));
+        var partition = reader.readInt32()??0;
+        var error = reader.readInt16()??0;
+        var offset = reader.readInt64()??0;
+        var timestamp = reader.readInt64()??0;
+        results.add(PartitionResult(TopicPartition(topic, partition), error, offset, timestamp));
         partitionCount--;
       }
       topicCount--;
     }
-    var throttleTime = reader.readInt32();
+    var throttleTime = reader.readInt32()??0;
     return ProduceResponse(PartitionResults(results), throttleTime);
   }
 }

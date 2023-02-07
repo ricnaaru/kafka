@@ -48,7 +48,7 @@ class Broker {
       _cache[key] = new Broker._(id, host, port);
     }
 
-    return _cache[key];
+    return _cache[key]!;
   }
 
   @override
@@ -80,7 +80,7 @@ class TopicPartition {
       _cache[key] = new TopicPartition._(topic, partition);
     }
 
-    return _cache[key];
+    return _cache[key]!;
   }
 
   @override

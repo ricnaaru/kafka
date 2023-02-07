@@ -26,27 +26,25 @@ class OffsetMaster {
     return _fetch(partitions, -1);
   }
 
-  Future<List<TopicOffset>> _fetch(
-      List<TopicPartition> partitions, int time) async {
+  Future<List<TopicOffset>> _fetch(List<TopicPartition> partitions, int time) async {
     var topics = partitions.map((_) => _.topic).toSet();
-    var meta =
-        await session.metadata.fetchTopics(topics.toList(growable: false));
+    var meta = await session.metadata.fetchTopics(topics.toList(growable: false));
     var requests = new Map<Broker, List<TopicPartition>>();
     var brokers = meta.brokers;
     for (var p in partitions) {
-      var leaderId = meta[p.topic].partitions[p.partition].leader;
+      var leaderId = meta[p.topic]?.partitions[p.partition]?.leader;
+      if (leaderId == null) continue;
       var broker = brokers[leaderId];
-      requests.putIfAbsent(broker, () => new List());
-      requests[broker].add(p);
+      if (broker == null) continue;
+      requests.putIfAbsent(broker, () => []);
+      requests[broker]!.add(p);
     }
 
-    var offsets = new List<TopicOffset>();
+    var offsets = <TopicOffset>[];
     for (var host in requests.keys) {
-      var fetchInfo = new Map<TopicPartition, int>.fromIterable(requests[host],
-          value: (partition) => time);
+      var fetchInfo = new Map<TopicPartition, int>.fromIterable(requests[host]!, value: (partition) => time);
       var request = new ListOffsetRequest(fetchInfo);
-      ListOffsetResponse response =
-          await session.send(request, host.host, host.port);
+      ListOffsetResponse response = await session.send(request, host.host, host.port);
       offsets.addAll(response.offsets);
     }
 

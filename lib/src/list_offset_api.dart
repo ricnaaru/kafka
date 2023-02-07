@@ -1,7 +1,9 @@
+import 'package:collection/collection.dart';
+
 import 'common.dart';
 import 'errors.dart';
 import 'io.dart';
-import 'util/group_by.dart';
+import 'util/group_by.dart' as kafka;
 import 'util/tuple.dart';
 
 /// Kafka ListOffsetRequest.
@@ -26,8 +28,7 @@ class ListOffsetRequest extends KRequest<ListOffsetResponse> {
   ListOffsetRequest(this.topics);
 
   @override
-  ResponseDecoder<ListOffsetResponse> get decoder =>
-      const _ListOffsetResponseDecoder();
+  ResponseDecoder<ListOffsetResponse> get decoder => const _ListOffsetResponseDecoder();
 
   @override
   RequestEncoder<KRequest> get encoder => const _ListOffsetRequestEncoder();
@@ -39,8 +40,7 @@ class ListOffsetResponse {
   final List<TopicOffset> offsets;
 
   ListOffsetResponse(this.offsets) {
-    var errorOffset = offsets.firstWhere((_) => _.error != Errors.NoError,
-        orElse: () => null);
+    var errorOffset = offsets.firstWhereOrNull((_) => _.error != Errors.NoError);
     if (errorOffset != null) {
       throw new KafkaError.fromCode(errorOffset.error, this);
     }
@@ -56,12 +56,10 @@ class TopicOffset {
   final int timestamp;
   final int offset;
 
-  TopicOffset(
-      this.topic, this.partition, this.error, this.timestamp, this.offset);
+  TopicOffset(this.topic, this.partition, this.error, this.timestamp, this.offset);
 
   @override
-  toString() =>
-      'TopicOffset{$topic-$partition, error: $error, timestamp: $timestamp, offset: $offset}';
+  toString() => 'TopicOffset{$topic-$partition, error: $error, timestamp: $timestamp, offset: $offset}';
 }
 
 class _ListOffsetRequestEncoder implements RequestEncoder<ListOffsetRequest> {
@@ -69,18 +67,18 @@ class _ListOffsetRequestEncoder implements RequestEncoder<ListOffsetRequest> {
 
   @override
   List<int> encode(ListOffsetRequest request, int version) {
-    assert(version == 1,
-        'Only v1 of ListOffset request is supported by the client.');
+    assert(version == 1, 'Only v1 of ListOffset request is supported by the client.');
     var builder = new KafkaBytesBuilder();
     builder.addInt32(ListOffsetRequest.replicaId);
 
     // <topic, partition, timestamp>
-    List<Tuple3<String, int, int>> items = request.topics.keys.map((_) {
-      return tuple3(_.topic, _.partition, request.topics[_]);
-    }).toList(growable: false);
+    List<Tuple3<String, int, int?>> items = request.topics.keys.map(
+      (_) {
+        return tuple3(_.topic, _.partition, request.topics[_]);
+      },
+    ).toList(growable: false);
 
-    Map<String, List<Tuple3<String, int, int>>> groupedByTopic =
-        groupBy(items, (_) => _.$1);
+    Map<String, List<Tuple3<String, int, int?>>> groupedByTopic = kafka.groupBy(items, (_) => _.$1);
 
     builder.addInt32(groupedByTopic.length);
     groupedByTopic.forEach((topic, partitions) {
@@ -88,7 +86,7 @@ class _ListOffsetRequestEncoder implements RequestEncoder<ListOffsetRequest> {
       builder.addInt32(partitions.length);
       partitions.forEach((p) {
         builder.addInt32(p.$2);
-        builder.addInt64(p.$3);
+        builder.addInt64(p.$3 ?? 0);
       });
     });
 
@@ -96,26 +94,24 @@ class _ListOffsetRequestEncoder implements RequestEncoder<ListOffsetRequest> {
   }
 }
 
-class _ListOffsetResponseDecoder
-    implements ResponseDecoder<ListOffsetResponse> {
+class _ListOffsetResponseDecoder implements ResponseDecoder<ListOffsetResponse> {
   const _ListOffsetResponseDecoder();
 
   @override
   ListOffsetResponse decode(List<int> data) {
     var reader = new KafkaBytesReader.fromBytes(data);
 
-    var count = reader.readInt32();
-    var offsets = new List<TopicOffset>();
+    var count = reader.readInt32() ?? 0;
+    var offsets = <TopicOffset>[];
     while (count > 0) {
-      var topic = reader.readString();
-      var partitionCount = reader.readInt32();
+      var topic = reader.readString() ?? "";
+      var partitionCount = reader.readInt32() ?? 0;
       while (partitionCount > 0) {
-        var partition = reader.readInt32();
-        var error = reader.readInt16();
-        var timestamp = reader.readInt64();
-        var offset = reader.readInt64();
-        offsets
-            .add(new TopicOffset(topic, partition, error, timestamp, offset));
+        var partition = reader.readInt32() ?? 0;
+        var error = reader.readInt16() ?? 0;
+        var timestamp = reader.readInt64() ?? 0;
+        var offset = reader.readInt64() ?? 0;
+        offsets.add(new TopicOffset(topic, partition, error, timestamp, offset));
         partitionCount--;
       }
       count--;

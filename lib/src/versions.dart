@@ -35,8 +35,8 @@ Map<int, int> resolveApiVersions(
       new Map.fromIterable(clientVersions, key: (v) => v.key);
   Map<int, int> result = new Map();
   for (var key in clientMap.keys) {
-    var client = clientMap[key];
-    var server = serverMap[key];
+    var client = clientMap[key]!;
+    var server = serverMap[key]!;
 
     /// Check if version ranges overlap. If they don't then client
     /// can't communicate with this Kafka broker.

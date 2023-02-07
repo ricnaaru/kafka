@@ -1,16 +1,15 @@
 import 'common.dart';
 
 abstract class PartitionAssignor {
-  Map<String, List<TopicPartition>> assign(Map<String, int> partitionsPerTopic,
-      Map<String, Set<String>> memberSubscriptions);
+  Map<String, List<TopicPartition>> assign(
+      Map<String, int> partitionsPerTopic, Map<String, Set<String>> memberSubscriptions);
 
   factory PartitionAssignor.forStrategy(String assignmentStrategy) {
     switch (assignmentStrategy) {
       case 'roundrobin':
         return new RoundRobinPartitionAssignor();
       default:
-        throw new ArgumentError(
-            'Unsupported assignment strategy "$assignmentStrategy" for PartitionAssignor.');
+        throw new ArgumentError('Unsupported assignment strategy "$assignmentStrategy" for PartitionAssignor.');
     }
   }
 }
@@ -21,29 +20,28 @@ abstract class PartitionAssignor {
 /// member within consumer group.
 class RoundRobinPartitionAssignor implements PartitionAssignor {
   @override
-  Map<String, List<TopicPartition>> assign(Map<String, int> partitionsPerTopic,
-      Map<String, Set<String>> memberSubscriptions) {
+  Map<String, List<TopicPartition>> assign(
+      Map<String, int> partitionsPerTopic, Map<String, Set<String>> memberSubscriptions) {
     var topics = new Set<String>();
     memberSubscriptions.values.forEach(topics.addAll);
-    if (!memberSubscriptions.values
-        .every((list) => list.length == topics.length)) {
-      throw new StateError(
-          'RoundRobinPartitionAssignor: All members must subscribe to the same topics. '
+    if (!memberSubscriptions.values.every((list) => list.length == topics.length)) {
+      throw new StateError('RoundRobinPartitionAssignor: All members must subscribe to the same topics. '
           'Subscriptions given: $memberSubscriptions.');
     }
 
     Map<String, List<TopicPartition>> assignments = new Map.fromIterable(
-        memberSubscriptions.keys,
-        value: (_) => new List());
+      memberSubscriptions.keys,
+      value: (_) => [],
+    );
 
     var offset = 0;
     for (var topic in partitionsPerTopic.keys) {
-      List<TopicPartition> partitions = new List.generate(
-          partitionsPerTopic[topic], (_) => new TopicPartition(topic, _));
+      List<TopicPartition> partitions =
+          new List.generate(partitionsPerTopic[topic] ?? 0, (_) => new TopicPartition(topic, _));
       for (var p in partitions) {
         var k = (offset + p.partition) % memberSubscriptions.keys.length;
         var memberId = memberSubscriptions.keys.elementAt(k);
-        assignments[memberId].add(p);
+        assignments[memberId]?.add(p);
       }
       offset += partitions.last.partition + 1;
     }

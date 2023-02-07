@@ -146,7 +146,7 @@ class UnknownError extends KafkaError {
 }
 
 class OffsetOutOfRangeError extends KafkaError {
-  final List<TopicPartition> topicPartitions;
+  final List<TopicPartition>? topicPartitions;
   OffsetOutOfRangeError(response, this.topicPartitions)
       : super._(Errors.OffsetOutOfRange, response);
 }

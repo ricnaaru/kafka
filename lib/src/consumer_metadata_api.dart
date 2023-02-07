@@ -59,10 +59,10 @@ class _GroupCoordinatorResponseDecoder
   @override
   GroupCoordinatorResponse decode(List<int> data) {
     var reader = new KafkaBytesReader.fromBytes(data);
-    var error = reader.readInt16();
-    var id = reader.readInt32();
-    var host = reader.readString();
-    var port = reader.readInt32();
+    var error = reader.readInt16() ?? 0;
+    var id = reader.readInt32() ?? 0;
+    var host = reader.readString() ?? "";
+    var port = reader.readInt32() ?? 0;
     return new GroupCoordinatorResponse(error, id, host, port);
   }
 }
